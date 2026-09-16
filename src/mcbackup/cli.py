@@ -1,6 +1,8 @@
 ﻿import argparse
 import logging
 import shutil
+import os
+from mcbackup.rcon import paused_saving
 from datetime import datetime
 from pathlib import Path
 
@@ -27,6 +29,10 @@ def parse_args() -> argparse.Namespace:
                         help="show what would happen without writing or deleting")
     parser.add_argument("--verbose", action="store_true",
                         help="enable debug logging")
+    parser.add_argument("--rcon-host", default="127.0.0.1",
+                        help="RCON host (default: 127.0.0.1)")
+    parser.add_argument("--rcon-password", default=os.environ.get("MCRCON_PASSWORD"),
+                        help="RCON password (default: $MCRCON_PASSWORD)")
     return parser.parse_args()
 
 
@@ -57,7 +63,16 @@ def main() -> None:
         log.info("Would back up %s to %s.zip", args.world, dest)
     else:
         try:
-            archive = shutil.make_archive(str(dest), "zip", root_dir=args.world)
+            if args.rcon_password:
+                try:
+                    with paused_saving(args.rcon_host, args.rcon_password):
+                        archive = shutil.make_archive(str(dest), "zip", root_dir=args.world)
+                except ConnectionError:
+                    log.warning("RCON unavailable — backing up without pausing saves")
+                    archive = shutil.make_archive(str(dest), "zip", root_dir=args.world)
+            else:
+                log.warning("No RCON password set — backing up without pausing saves")
+                archive = shutil.make_archive(str(dest), "zip", root_dir=args.world)
         except OSError:
             log.exception("Backup failed")
             raise SystemExit(1)
